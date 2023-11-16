@@ -1,3 +1,5 @@
+from jsonargparse import ArgumentParser, Namespace
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -15,3 +17,7 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def parse_args() -> Namespace:
+    pass

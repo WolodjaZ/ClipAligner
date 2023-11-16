@@ -1,5 +1,10 @@
 import torch
-from src.utils import set_logger, get_loss_fn, set_seed, AverageMeter
+import argparse
+from loguru import logger
+from src.models import create_model
+from src.datasets import get_dataset
+from src.utils import parse_args, set_logger, set_seed, AverageMeter, print_metrics
+from src.losses import get_loss_fn
 
 def validate(
     model: torch.nn.Module,
@@ -48,6 +53,7 @@ def validate(
     # Return the metrics
     return [metric_meter.avg for metric_meter in metrics_meter.values()]
 
+
 def get_metric_value(metric_name: str, image_embeddings: torch.Tensor, caption_embeddings: torch.Tensor) -> float:
     """Get the metric value.
     
@@ -68,11 +74,67 @@ def get_metric_value(metric_name: str, image_embeddings: torch.Tensor, caption_e
     else:
         raise ValueError(f"Metric {metric_name} is not supported.")
 
-def evaluate():
-    pass
 
-def main():
-    pass
+def evaluate(args: argparse.Namespace) -> None:
+    """Evaluate the model.
+    
+    Args:
+        args (dict): Arguments.
+        logger (logger): Logger.
+    """
+    # Set the seed
+    set_seed(args.seed)
+    logger.info(f"Seed: {args.seed}")
+    
+    # Set the device
+    device = torch.device("cuda" if torch.cuda.is_available() and args.use_gpu else "cpu")
+    logger.info(f"Device: {device}")
+    
+    # Load the model
+    model = create_model(args.model_name, model_checkpoint=args.model_checkpoint)
+    model.to(device)
+    logger.info(f"Model: {model}")
+    
+    # Get the dataset
+    dataset = get_dataset(args.dataset_name, args.dataset_path)
+    logger.info(f"Dataset: {dataset}")
+    
+    # Get the dataloader
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
+    logger.info("Initialized dataloader.")
+    
+    # Load the loss function for the metric
+    loss_fn = get_loss_fn(args.loss_fn_name)
+    
+    # Evaluate
+    logger.info("Start evaluation...")
+    metrics = validate(model, dataloader, loss_fn, device, args.calculate_metrics)
+    
+    # Log the metrics
+    logger.info(f"Metrics: {print_metrics(metrics)}")
+    logger.info("Evaluation finished.")
+
+def main() -> int:
+    """Main function.
+    
+    Returns:
+        int: Return code. 0 if success, 1 if error.
+    """
+    # Parse the arguments
+    args = parse_args()
+    
+    # Set the logger
+    set_logger(args)
+    
+    # evaluate
+    try:
+        evaluate(args)
+    except Exception as e:
+        logger.error(e)
+        return 1
+    
+    return 0
+    
 
 if __name__ == "__main__":
     main()

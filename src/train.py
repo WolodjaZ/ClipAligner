@@ -2,12 +2,13 @@ import os
 import torch
 import hydra
 from tqdm import tqdm
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from loguru import logger
 from functools import partial
 from src.models import create_model
 from src.datasets import get_dataset
-from src.utils import set_logger, get_loss_fn, set_seed, AverageMeter
+from src.utils import set_logger, set_seed, AverageMeter
+from src.losses import get_loss_fn
 from src.eval import validate
 
 
@@ -68,12 +69,11 @@ def train_on_epoch(
     
     return loss_meter.avg, current_lr
     
-def train(cfg: DictConfig, logger: logger) -> None:
+def train(cfg: DictConfig) -> None:
     """Main training function.
     
     Args:
         cfg (DictConfig): Configuration file.
-        logger (logger): Logger.
     """
     # Set the seed
     set_seed(cfg.seed)
@@ -84,7 +84,7 @@ def train(cfg: DictConfig, logger: logger) -> None:
     logger.info(f"Device: {device}")
     
     # Set the dataset
-    train_dataset, val_dataset = get_dataset(cfg.dataset)
+    train_dataset, val_dataset = get_dataset(**OmegaConf.to_container(cfg.dataset, resolve=True))
     logger.info(f"Train Dataset: {train_dataset} | Validation Dataset: {val_dataset}")
     
     # Set the dataloader
@@ -151,11 +151,11 @@ def main(cfg: DictConfig) -> int:
         int: 0 if the training is successful. 1 otherwise.
     """
     # Set the logger
-    logger = set_logger(cfg, logger)
+    set_logger(cfg)
     
     # start training
     try:
-        train(cfg, logger)
+        train(cfg)
     except Exception as e:
         logger.exception(e)
         return 1

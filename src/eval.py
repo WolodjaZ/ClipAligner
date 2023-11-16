@@ -15,13 +15,15 @@ def validate(
     """Evaluate the model and calculate loss and metrics.
     
     Args:
-        model (torch.nn.Module): Model.
-        dataloader (torch.utils.data.DataLoader): Dataloader.
-        loss_fn (torch.nn.Module): Loss function.
-        device (torch.device): Device.
-        calculate_metrics (list | None): List of metrics to calculate additional to the loss.
+        model (torch.nn.Module): The neural network model.
+        dataloader (torch.utils.data.DataLoader): DataLoader providing training data batches.
+        loss_fn (torch.nn.Module): Loss function used for training.
+        device (torch.device): Device on which to perform computations.
+        batch_idx_to_log (int): Frequency of logging training progress.
+        calculate_metrics (list | None): List of additional metrics to calculate.
+        
     Returns:
-        list: List of metrics.
+        List (list) of calculated metric values.
     """
     # Set the model to evaluation mode
     model.eval()

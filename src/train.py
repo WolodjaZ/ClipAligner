@@ -4,7 +4,6 @@ import hydra
 from tqdm import tqdm
 from omegaconf import DictConfig, OmegaConf
 from loguru import logger
-from functools import partial
 from src.models import create_model
 from src.datasets import get_dataset
 from src.utils import set_logger, set_seed, AverageMeter
@@ -23,16 +22,15 @@ def train_on_epoch(
     """Train the model on an epoch.
     
     Args:
-        model (torch.nn.Module): Model.
-        optimizer (torch.optim.Optimizer): Optimizer.
-        scheduler (torch.optim.lr_scheduler._LRScheduler | None): Scheduler.
-        loss_fn (torch.nn.Module): Loss function.
-        dataloader (torch.utils.data.DataLoader): Dataloader.
-        device (torch.device): Device.
-        batch_idx_to_log (int): Which batch index to log.
+        model (torch.nn.Module): The neural network model.
+        optimizer (torch.optim.Optimizer): Optimizer for updating model weights.
+        scheduler (torch.optim.lr_scheduler._LRScheduler | None): Learning rate scheduler.
+        loss_fn (torch.nn.Module): Loss function used for training.
+        dataloader (torch.utils.data.DataLoader): DataLoader providing training data batches.
+        device (torch.device): Device on which to perform computations.
+        batch_idx_to_log (int): Frequency of logging training progress.
     Returns:
-        float: Average loss.
-        float | None: Current learning rate. None if no scheduler is used.
+        float, float | None: Average loss and current learning rate. None if no scheduler is used.
     """
     # Set the model to train mode
     model.train()
@@ -41,7 +39,7 @@ def train_on_epoch(
     loss_meter = AverageMeter()
     
     # Iterate over the dataloader
-    for batch_idx, (images, captions) in enumerate(tqdm(dataloader)):
+    for batch_idx, (images, captions) in enumerate(tqdm(dataloader, desc="Training")):
         # Move the data to the device
         images, captions = images.to(device), captions.to(device)
         
@@ -49,25 +47,26 @@ def train_on_epoch(
         optimizer.zero_grad()
         image_embeddings, caption_embeddings = model(images, captions)
         
-        # Compute the loss and update the loss meter
+        # Compute the loss
         loss = loss_fn(image_embeddings, caption_embeddings)
-        loss_meter.update(loss.item())
         
         # Backward pass
         loss.backward()
         optimizer.step()
+        
+        # Update the loss meter
+        loss_meter.update(loss.item())
         
         # Log the loss
         if batch_idx % batch_idx_to_log == 0 or batch_idx == len(dataloader) - 1:
             logger.info(f"Batch: {batch_idx} | Loss: {loss.item()}")
     
     # Step the scheduler
-    current_lr = None
-    if scheduler is not None:
+    lr = optimizer.param_groups[0]["lr"] if scheduler else None
+    if scheduler:
         scheduler.step()
-        current_lr = optimizer.param_groups[0]["lr"]
     
-    return loss_meter.avg, current_lr
+    return loss_meter.avg, lr
     
 def train(cfg: DictConfig) -> None:
     """Main training function.

@@ -14,12 +14,21 @@ def get_loss_fn(cfg: DictConfig | str) -> BaseImageCaptionLoss | BaseImageLoss |
     Returns:
         BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss: Loss function.
     """
+    # Extract the name and get the dictionary of parameters
     if isinstance(cfg, str):
-        name = cfg.lower()
+        name = cfg
         dict_cfg = {}
     else:
+        # Convert to dictionary
         dict_cfg = OmegaConf.to_container(cfg, resolve=True)
-        name = dict_cfg.pop("name").lower()
+        # Extract the name
+        name = dict_cfg.pop("name", None)
+        # Check if the name is provided
+        if name is None:
+            raise LossNotImplementedError("Loss name is not provided.")
+
+    name = name.lower()
+    # Get the loss function based on the name
     if name == "clip":
         return ClipLoss(**dict_cfg)
     elif name == "coca":

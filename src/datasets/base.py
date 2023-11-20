@@ -4,6 +4,7 @@ from loguru import logger
 
 from torch.utils.data import Dataset
 
+
 class DatasetNotImplementedError(NotImplementedError):
     """Dataset not implemented error."""
     pass
@@ -13,7 +14,7 @@ class BaseImageDataset(Dataset):
     def __init__(self, dataset_path: Path, *args, **kwargs) -> None:
         super().__init__()
         self._dataset_path = dataset_path
-        self.validate_dataset()
+        self.validate_dataset(self._dataset_path)
         self._image_paths = self._get_image_paths()
         logger.debug(f"Dataset Image {self.__class__.__name__} path: {self._dataset_path} | Number of images: {len(self)}")
     
@@ -36,17 +37,17 @@ class BaseCaptionDataset(Dataset):
     def __init__(self, dataset_path: Path, *args, **kwargs) -> None:
         super().__init__()
         self._dataset_path = dataset_path
-        self.validate_dataset()
+        self.validate_dataset(self._dataset_path)
         self._captions = self._get_captions()
         logger.debug(f"Dataset Caption path: {self._dataset_path} | Number of captions: {len(self)}")
     
     def __len__(self) -> int:
         return len(self._captions)
     
-    def __getitem__(self, index: int) -> torch.Tensor:
+    def __getitem__(self, index: int) -> torch.Tensor | str:
         raise NotImplementedError("Dataset not implemented.")
 
-    def _get_image_paths(self) -> list[Path]:
+    def _get_caption_paths(self) -> list[Path]:
         raise NotImplementedError(f"Dataset {self.__class__.__name__} not implemented.")
 
     @staticmethod
@@ -59,14 +60,14 @@ class BaseImageCaptionDataset(Dataset):
     def __init__(self, dataset_path: Path, *args, **kwargs) -> None:
         super().__init__()
         self._dataset_path = dataset_path
-        self.validate()
+        self.validate_dataset(self._dataset_path)
         self._image_paths = self._get_image_paths()
         logger.debug(f"Dataset ImageCaption path: {self._dataset_path} | Number of samples: {len(self)}")
     
     def __len__(self) -> int:
         return len(self._image_paths)
     
-    def __getitem__(self, index: int) -> (torch.Tensor, torch.Tensor):
+    def __getitem__(self, index: int) -> (torch.Tensor, torch.Tensor | str):
         raise NotImplementedError("Dataset not implemented.")
 
     def _get_image_paths(self) -> list[Path]:

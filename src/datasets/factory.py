@@ -1,6 +1,7 @@
 from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from .base import BaseImageCaptionDataset, BaseImageDataset, BaseCaptionDataset, DatasetNotImplementedError
+from .dumb import DumbImageDataset, DumbCaptionDataset, DumbImageCaptionDataset
 from .ccm import CC3MDataset, CC12MDataset
 from .laion import Laion400Dataset
 
@@ -34,7 +35,13 @@ def get_dataset(cfg: dict | DictConfig) -> BaseImageDataset | BaseCaptionDataset
     dataset_path = Path(dataset_path)
     
     # Get the dataset based on the name
-    if name == "cc3m":
+    if name == "dumb_image":
+        return DumbImageDataset(dataset_path, **cfg)
+    elif name == "dumb_caption":
+        return DumbCaptionDataset(dataset_path, **cfg)
+    elif name == "dumb_image_caption":
+        return DumbImageCaptionDataset(dataset_path, **cfg)
+    elif name == "cc3m":
         return CC3MDataset(dataset_path, **cfg)
     elif name == "cc12m":
         return CC12MDataset(dataset_path, **cfg)

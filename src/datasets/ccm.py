@@ -24,7 +24,7 @@ class CC3MDataset(BaseImageCaptionDataset):
     def _get_image_paths(self) -> list[Path]:
         return list(self._dataset_path.glob("*.tar"))
     
-    def _get_caption_for_image(self, image_path: Path) -> str:
+    def _get_caption_for_image(self, image_path: Path) -> torch.Tensor | str:
         caption_path = image_path.with_suffix(".txt")
         with open(caption_path, "r") as f:
             caption = f.read()

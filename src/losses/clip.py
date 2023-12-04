@@ -77,9 +77,8 @@ class ClipLoss(BaseImageCaptionLoss):
             rank=0,
             world_size=1,
             use_horovod=False,
-            name="clip",
     ):
-        super().__init__(name=name)
+        super().__init__()
         self.local_loss = local_loss
         self.gather_with_grad = gather_with_grad
         self.cache_labels = cache_labels
@@ -148,7 +147,6 @@ class CoCaLoss(ClipLoss):
             rank=0,
             world_size=1,
             use_horovod=False,
-            name="coca",
     ):
         super().__init__(
             local_loss=local_loss,
@@ -157,7 +155,6 @@ class CoCaLoss(ClipLoss):
             rank=rank,
             world_size=world_size,
             use_horovod=use_horovod,
-            name=name,
         )
 
         self.clip_loss_weight = clip_loss_weight
@@ -193,7 +190,6 @@ class DistillClipLoss(ClipLoss):
             rank,
             world_size,
             use_horovod,
-            name="distill_clip",
     ):
         super().__init__(
             local_loss=local_loss,
@@ -202,7 +198,6 @@ class DistillClipLoss(ClipLoss):
             rank=rank,
             world_size=world_size,
             use_horovod=use_horovod,
-            name=name,
         )
 
     def dist_loss(self, teacher_logits, student_logits):
@@ -347,9 +342,8 @@ class SigLipLoss(BaseImageCaptionLoss):
             world_size=1,
             bidir=True,
             use_horovod=False,
-            name="siglip",
     ):
-        super().__init__(name=name)
+        super().__init__()
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size

@@ -96,7 +96,7 @@ class RobertaCaptionModel(BaseCaptionModel):
     
     def forward(self, x: torch.Tensor | str | dict) -> torch.Tensor:
         if isinstance(x, str):
-            x = self._tokenizer(x, return_tensors="pt", padding=True)
+            x = self._tokenizer(x, return_tensors="pt", padding=True, truncation=True)
 
         output = self._model(**x)
         x = self._pooler(output)

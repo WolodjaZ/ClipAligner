@@ -61,6 +61,7 @@ class ClipAligner(BaseImageCaptionModel):
                  caption_model: BaseCaptionModel,
                  vision_layer: List[Tuple[int, str]],
                  caption_layer: List[Tuple[int, str]],
+                 init_logit_scale: float = torch.log(torch.tensor(1 / 0.07)),
                  *args, **kwargs) -> None:
         super().__init__(vision_model, caption_model, *args, **kwargs)
         if vision_layer[-1][0] != caption_layer[-1][0]:
@@ -68,6 +69,7 @@ class ClipAligner(BaseImageCaptionModel):
 
         self._vision_aligner = _build_aligner_module(vision_layer, vision_model.output_dim)
         self._caption_aligner = _build_aligner_module(caption_layer, caption_model.output_dim)
+        self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale)
         self._output_dim = vision_layer[-1][0]
 
     def get_basic_transformations(self) -> (List[Any], Any):
@@ -82,7 +84,7 @@ class ClipAligner(BaseImageCaptionModel):
         caption_embeddings = self._caption_model(caption)
         image_aligned_embeddings = self._vision_aligner(image_embeddings)
         caption_aligned_embeddings = self._caption_aligner(caption_embeddings)
-        return image_aligned_embeddings, caption_aligned_embeddings
+        return image_aligned_embeddings, caption_aligned_embeddings, self.logit_scale.exp()
 
 
 def _build_aligner_module(vision_layer: List[Tuple[int, str]], input_dim: int) -> nn.Module:

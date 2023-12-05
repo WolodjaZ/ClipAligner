@@ -1,0 +1,4 @@
+name: "clip"
+local_loss: false
+gather_with_grad: false
+cache_labels: True

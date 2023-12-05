@@ -1,0 +1,30 @@
+defaults:
+  - model: clip_aligner
+  - dataset: dumb
+  - loss: clip
+  - override hydra/job_logging: disabled
+  # - hydra/hydra_logging: disabled
+  - _self_
+
+log_file: "logs"
+log_level: "INFO"
+verbose: true
+seed: 1998
+batch_size: 8
+num_workers: 0
+batch_freq_print: 1
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 0.001
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  eps: 1e-08
+scheduler:
+  name: cosine_lr
+  base_lr: 0.001
+  warmup_length: 0
+  steps: 100
+epochs: 1
+save_dir: "checkpoints"
+save_period: 1
+checkpoint: null

@@ -3,7 +3,7 @@ import argparse
 from loguru import logger
 from src.models import create_model
 from src.datasets import get_dataset
-from src.utils import parse_args, set_logger, set_seed, AverageMeter, print_metrics
+from src.utils import parse_args, set_logger, set_seed, AverageMeter#, print_metrics
 from src.losses import get_loss_fn
 
 def validate(

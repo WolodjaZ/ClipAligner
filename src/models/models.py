@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from loguru import logger
-from typing import List, Any
+from typing import Dict, Any
 
 from .base import BaseImageModel, BaseCaptionModel
 
@@ -35,8 +35,8 @@ class DinoVisionModel(BaseImageModel):
     def output_dim(self) -> int:
         return self._output_dim
     
-    def get_basic_transformations(self) -> List[Any]:
-        return self._transform
+    def get_transformations(self) -> Dict[str, Any]:
+        return {"image": self._transform}
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         output = self._model.forward_features(x)
@@ -91,12 +91,15 @@ class RobertaCaptionModel(BaseCaptionModel):
     def output_dim(self) -> int:
         return self._output_dim
 
-    def get_tokenizer(self) -> Any:
-        return self._tokenizer
+    def get_transformations(self) -> Dict[str, Any]:
+        return {"caption": self._tokenizer}
     
     def forward(self, x: torch.Tensor | str | dict) -> torch.Tensor:
         if isinstance(x, str):
             x = self._tokenizer(x, return_tensors="pt", padding=True, truncation=True)
+
+        x["input_ids"] = x["input_ids"].squeeze(1)
+        x["attention_mask"] = x["attention_mask"].squeeze(1)
 
         output = self._model(**x)
         x = self._pooler(output)

@@ -32,15 +32,24 @@ def create_model(cfg: dict | DictConfig) -> BaseImageModel | BaseCaptionModel | 
     checkpoints = {}
 
     if image_cfg is not None:
-        buff_name = image_cfg.pop("name")
+        buff_name = image_cfg.pop("name", None)
+        if buff_name is None:
+            raise ModelNotImplementedError("Image model name is not provided. Please provide the name in the configuration file or don't include it in configs.")
+        buff_name = buff_name.lower()
         name += buff_name
         checkpoints[buff_name] = image_cfg.pop("checkpoint", None)
     if caption_cfg is not None:
         buff_name = caption_cfg.pop("name")
+        if buff_name is None:
+            raise ModelNotImplementedError("Caption model name is not provided. Please provide the name in the configuration file or don't include it in configs.")
+        buff_name = buff_name.lower()
         name += SEPARATOR + buff_name
         checkpoints[buff_name] = caption_cfg.pop("checkpoint", None)
     if alignment_cfg is not None:
         buff_name = alignment_cfg.pop("name")
+        if buff_name is None:
+            raise ModelNotImplementedError("Alignment model name is not provided. Please provide the name in the configuration file or don't include it in configs.")
+        buff_name = buff_name.lower()
         name += SEPARATOR + buff_name
         # checkpoints[buff_name] = alignment_cfg.pop("checkpoint", None)
 

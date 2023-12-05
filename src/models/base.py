@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 from loguru import logger
-from typing import List, Any
+from typing import Dict, Any
 
 from torch import nn
 
@@ -19,7 +19,7 @@ class BaseImageModel(nn.Module):
     def output_dim(self) -> int:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
     
-    def get_basic_transformations(self) -> List[Any]:
+    def get_transformations(self) -> Dict[str, Any]:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -35,7 +35,7 @@ class BaseCaptionModel(nn.Module):
     def output_dim(self) -> int:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
 
-    def get_tokenizer(self) -> Any:
+    def get_transformations(self) -> Dict[str, Any]:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
     
     def forward(self, x: torch.Tensor | str | dict) -> torch.Tensor:
@@ -53,7 +53,7 @@ class BaseImageCaptionModel(nn.Module):
     def output_dim(self) -> int:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
 
-    def get_basic_transformations(self) -> (List[Any], Any):
+    def get_transformations(self) -> Dict[str, Any]:
         raise NotImplementedError(f"Model {self.__class__.__name__} not implemented.")
     
     def forward(self, image: torch.Tensor, caption: torch.Tensor | str | dict) -> torch.Tensor:

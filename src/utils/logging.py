@@ -40,7 +40,7 @@ def set_logger(log_file: str, level: str, verbose: bool = False) -> None:
 
     # Setup logger
     try:
-        logger.remove() # TODO: Remove this line if you want to use multiple loggers
+        logger.remove() # Remove this line if you want to use multiple loggers
         logger.add(log_file, rotation="10 MB", level=level, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
         if verbose:
             logger.add(sys.stdout, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")

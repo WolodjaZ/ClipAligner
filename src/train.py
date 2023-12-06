@@ -2,12 +2,14 @@ import os
 import time
 import torch
 import hydra
+import lightning as L
 from tqdm import tqdm
 from pathlib import Path
 from loguru import logger
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 from typing import Callable
+from lightning.fabric.loggers import TensorBoardLogger
 
 from src.models import create_model, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
 from src.datasets import get_dataset
@@ -25,7 +27,7 @@ def train_on_epoch(
     scheduler: torch.optim.lr_scheduler._LRScheduler | Callable | None,
     loss_fn: BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss,
     dataloader: torch.utils.data.DataLoader,
-    device: torch.device,
+    fabric: L.fabric.Fabric,
     epoch: int,
     batch_freq_print: int = 100) -> (float, float | None):
     """Train the model on an epoch.
@@ -36,7 +38,7 @@ def train_on_epoch(
         scheduler (torch.optim.lr_scheduler._LRScheduler | None): Learning rate scheduler.
         loss_fn (BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss): Loss function used for training.
         dataloader (torch.utils.data.DataLoader): DataLoader providing training data batches.
-        device (torch.device): Device on which to perform computations.
+        fabric (L.fabric.Fabric): Lightning fabric.
         epoch (int): Current epoch.
         batch_freq_print (int): Frequency of logging training progress.
     Returns:
@@ -50,9 +52,6 @@ def train_on_epoch(
     
     # Iterate over the dataloader
     for batch_idx, (images, captions) in enumerate(progress_bar := tqdm(dataloader)):
-        # Move the data to the device
-        images, captions = images.to(device), captions.to(device)
-        
         # Forward pass
         optimizer.zero_grad()
         output = model(images, captions)
@@ -66,7 +65,7 @@ def train_on_epoch(
         total_loss = sum(losses.values())
         
         # Backward pass
-        total_loss.backward()
+        fabric.backward(total_loss)
         optimizer.step()
         
         # Update the loss meter
@@ -92,13 +91,22 @@ def train(cfg: DictConfig) -> None:
     Args:
         cfg (DictConfig): Configuration file.
     """
+    # Set the loggers
+    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    loggers = [TensorBoardLogger(root_dir=output_dir)] if cfg.vis_logger else None
+    
+    # Set the pytorch lightning
+    fabric = L.Fabric(**cfg.fabric, loggers=loggers)
+    fabric.launch()
+    logger.info(f"Fabric: {fabric} is launched.")
+    
     # Set the seed
-    set_seed(cfg.seed)
+    fabric.seed_everything(cfg.seed)
+    # set_seed(cfg.seed)
     logger.info(f"Seed: {cfg.seed}")
 
     # Set the device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Device: {device}")
+    logger.info(f"Device: {fabric.device}")
 
     # Set the model
     model = create_model(cfg.model)
@@ -131,11 +139,21 @@ def train(cfg: DictConfig) -> None:
     # Set the optimizer
     optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
     
+    # Set the model and optimizer
+    model = fabric.setup(model)
+    optimizer = fabric.setup_optimizers(optimizer)
+    
+    # Set the dataloaders
+    train_dataloader = fabric.setup_dataloaders(train_dataloader)
+    if val_dataloader is not None:
+        val_dataloader = fabric.setup_dataloaders(val_dataloader)
+    
     # Load the checkpoint
     start_epoch = 0
     if cfg.checkpoint is not None:
         try:
-            checkpoint = torch.load(cfg.checkpoint, map_location=device) # sourcery skip: extract-method
+            
+            checkpoint = fabric.load(cfg.checkpoint) # sourcery skip: extract-method
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
             start_epoch = checkpoint["epoch"]
@@ -160,7 +178,6 @@ def train(cfg: DictConfig) -> None:
     logger.info(f"Loss: {loss_fn}")
 
     # Set the output directory
-    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     save_dir = output_dir / cfg.save_dir
     save_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Save directory: {save_dir}")
@@ -169,18 +186,22 @@ def train(cfg: DictConfig) -> None:
     metrics = None
     logger.info(f"Start training for {cfg.epochs} epochs from {start_epoch} epoch...")
     for epoch in range(start_epoch, cfg.epochs):
-        loss, lr  = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, device, epoch, batch_freq_print=cfg.batch_freq_print)
+        loss, lr  = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, fabric, epoch, batch_freq_print=cfg.batch_freq_print)
+        fabric.log_dict({"train_loss": loss, "lr": lr})
         if val_dataloader is not None:
-            metrics = validate(dataloader=val_dataloader, model=model, loss_fn=loss_fn, device=device)
+            metrics = validate(dataloader=val_dataloader, model=model, loss_fn=loss_fn, fabric=fabric)
+            fabric.log_dict(metrics)
         logger.info(f"Epoch: {epoch} | Loss: {loss:.4f} | LR: {lr} | Evaluate Metrics: {metrics}")
         if epoch % cfg.save_period == 0:
+            # logger.info(torch.cuda.memory_summary())
             checkpoint_dict = {
                 "epoch": epoch,
                 "loss": loss,
-                "state_dict": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
+                "state_dict": model,
+                "optimizer": optimizer,
             }
-            torch.save(checkpoint_dict, save_dir / f"epoch_{epoch}.pt")
+            fabric.save(save_dir / f"epoch_{epoch}.ckpt", checkpoint_dict)
+            logger.info(f"Checkpoint is saved at {save_dir / f'epoch_{epoch}.ckpt'}")
     
 
 @hydra.main(version_base=None, config_name="train", config_path=MAIN_CONFIG)

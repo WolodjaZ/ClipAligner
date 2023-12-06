@@ -8,6 +8,7 @@ defaults:
 
 log_file: "logs"
 log_level: "INFO"
+vis_logger: True
 verbose: true
 seed: 1998
 batch_size: 8
@@ -28,3 +29,10 @@ epochs: 1
 save_dir: "checkpoints"
 save_period: 1
 checkpoint: null
+
+fabric:
+  accelerator: "auto"
+  devices: "auto"
+  strategy: "auto"
+  precision: null
+  num_nodes: 1

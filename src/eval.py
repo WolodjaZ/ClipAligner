@@ -1,6 +1,8 @@
 import torch
 import argparse
+import lightning as L
 from loguru import logger
+
 from src.models import create_model
 from src.datasets import get_dataset
 from src.utils import parse_args, set_logger, set_seed, AverageMeter#, print_metrics
@@ -10,7 +12,7 @@ def validate(
     model: torch.nn.Module,
     dataloader: torch.utils.data.DataLoader,
     loss_fn: torch.nn.Module,
-    device: torch.device,
+    fabric: L.fabric.Fabric,
     calculate_metrics: list | None = None) -> list:
     """Evaluate the model and calculate loss and metrics.
     
@@ -18,7 +20,7 @@ def validate(
         model (torch.nn.Module): The neural network model.
         dataloader (torch.utils.data.DataLoader): DataLoader providing training data batches.
         loss_fn (torch.nn.Module): Loss function used for training.
-        device (torch.device): Device on which to perform computations.
+        fabric (L.fabric.Fabric): Lightning fabric.
         batch_idx_to_log (int): Frequency of logging training progress.
         calculate_metrics (list | None): List of additional metrics to calculate.
         
@@ -39,7 +41,7 @@ def validate(
     with torch.inference_mode():
         for images, captions in dataloader:
             # Move the data to the device
-            images, captions = images.to(device), captions.to(device)
+            images, captions = images.to(fabric.device), captions.to(fabric.device)
             # Forward pass
             image_embeddings, caption_embeddings = model(images, captions)
             # Compute the loss and update the loss meter

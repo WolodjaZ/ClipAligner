@@ -24,7 +24,7 @@ class DinoVisionModel(BaseImageModel):
         self._model = torch.hub.load('facebookresearch/dinov2', checkpoint)
         self._pooler, self._output_dim = self._get_pooler_fn(pooling, checkpoint)
         self._transform = [
-            transforms.Resize(244), transforms.CenterCrop(224), transforms.Normalize([0.5], [0.5])
+            transforms.Resize(244, antialias=True), transforms.CenterCrop(224), transforms.Normalize([0.5], [0.5])
         ]
         
     

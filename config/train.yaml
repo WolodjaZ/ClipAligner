@@ -25,7 +25,7 @@ scheduler:
   base_lr: 0.001
   warmup_length: 0
   steps: 100
-epochs: 1
+epochs: 2
 save_dir: "checkpoints"
 save_period: 1
 checkpoint: null

@@ -5,7 +5,7 @@ from loguru import logger
 
 from src.models import create_model
 from src.datasets import get_dataset
-from src.utils import parse_args, set_logger, set_seed, AverageMeter#, print_metrics
+from src.utils import parse_args, set_logger, set_seed, AverageMeter, all_gather_object#, print_metrics
 from src.losses import get_loss_fn
 
 def validate(
@@ -29,14 +29,14 @@ def validate(
     """
     # Set the model to evaluation mode
     model.eval()
-    
+
     # Initialize the average meter
     loss_meter = AverageMeter()
     if calculate_metrics is not None and len(calculate_metrics) > 0:
         metrics_meter = {metric: AverageMeter() for metric in calculate_metrics}
     else:
         metrics_meter = {}
-    
+
     # Iterate over the dataloader with torch.inference_mode()
     with torch.inference_mode():
         for images, captions in dataloader:
@@ -51,11 +51,23 @@ def validate(
             for metric_name, metric_meter in metrics_meter.items():
                 metric = get_metric_value(metric_name, image_embeddings, caption_embeddings)
                 metric_meter.update(metric)
-    
+
     # Add the loss to the metrics meter
     metrics_meter['loss'] = loss_meter
+
+    # all_gather is used to aggregated the value across processes
+    metrics_meter = all_gather_object(metrics_meter, fabric=fabric)
+
+    # Join the metrics meter
+    metrics_meter_final = {}
+    metrics_meter_keys = list(metrics_meter[0].keys())
+    for metric_name in metrics_meter_keys:
+        metrics_meter_final[metric_name] = sum(
+            process_metric[metric_name] for process_metric in metrics_meter
+        )
+
     # Return the metrics
-    return [metric_meter.avg for metric_meter in metrics_meter.values()]
+    return {key: metric_meter.avg for key, metric_meter in metrics_meter_final.items()}
 
 
 def get_metric_value(metric_name: str, image_embeddings: torch.Tensor, caption_embeddings: torch.Tensor) -> float:

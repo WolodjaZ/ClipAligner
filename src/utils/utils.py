@@ -1,8 +1,15 @@
 import random
 import numpy as np
 import torch
-from typing import List
+from typing import List, Any
 from jsonargparse import ArgumentParser, Namespace
+import torch.distributed as dist
+from omegaconf import DictConfig
+
+try:
+    from lightning.fabric import Fabric
+except ImportError:
+    Fabric = None
 
 class AverageMeter:
     """
@@ -39,6 +46,26 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count if self.count != 0 else 0.0
+
+    def __add__(self, other: 'AverageMeter') -> 'AverageMeter':
+        """
+        Add two AverageMeter objects.
+
+        Args:
+            other (AverageMeter): The other AverageMeter to add.
+
+        Returns:
+            AverageMeter: A new AverageMeter instance with the sum of values.
+        """
+        if not isinstance(other, AverageMeter):
+            raise ValueError("Only AverageMeter instances can be added")
+
+        result = AverageMeter()
+        result.sum = self.sum + other.sum
+        result.count = self.count + other.count
+        result.avg = result.sum / result.count if result.count != 0 else 0.0
+        # The value 'val' is not aggregated as it represents the most recent value in each instance
+        return result
 
 def set_seed(seed: int) -> None:
     """
@@ -88,6 +115,24 @@ def wrap_output(output: torch.Tensor | List[torch.Tensor]) -> dict[str, torch.Te
         raise ValueError(f"Output length {output_length} not supported.")
 
     return dict(zip(keys, output))
+
+
+def all_gather_object(obj: Any, world_size: int = 1, fabric: Fabric | None=None) -> Any:
+    """Gather objects from all processes.
+
+    Args:
+        obj (Any): Object to gather.
+        world_size (int, optional): World size. Defaults to 1.
+        fabric (Fabric | None, optional): Lightning fabric. Defaults to None.
+
+    Returns:
+        Any: The gathered objects.
+    """
+    if fabric is not None:
+        return fabric.all_gather(obj)
+    objects = [None for _ in range(world_size)]
+    dist.all_gather_object(objects, obj)
+    return objects
 
 
 def parse_args() -> Namespace:

@@ -1,0 +1,5 @@
+name: dumb_image_caption
+dataset_path: ./tmp
+text_max_length: 20
+train_size: 100
+img_size: [256, 256]

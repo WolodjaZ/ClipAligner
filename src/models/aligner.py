@@ -72,8 +72,11 @@ class ClipAligner(BaseImageCaptionModel):
         self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale)
         self._output_dim = vision_layer[-1][0]
 
-    def get_basic_transformations(self) -> (List[Any], Any):
-        return self._vision_model.get_basic_transformations(), self._caption_model.get_tokenizer()
+    def get_transformations(self) -> (Any, Any):
+        return {
+            "image": self._vision_model.get_transformations()['image'],
+            "caption": self._caption_model.get_transformations()['caption']
+        }
 
     @property
     def output_dim(self) -> int:

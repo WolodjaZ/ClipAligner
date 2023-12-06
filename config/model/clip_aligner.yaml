@@ -1,0 +1,16 @@
+image:
+  name: dinov2
+  checkpoint: dinov2_vitb14
+  pooling: cls
+caption:
+  name: roberta
+  checkpoint: roberta-base
+  pooling: cls
+alignment:
+  name: clip_aligner
+  vision_layer:
+    - [768, "mlp"]
+    - [512, "mlp"]
+  caption_layer:
+    - [768, "mlp"]
+    - [512, "mlp"]

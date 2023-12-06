@@ -55,7 +55,7 @@ class DumbImageCaptionDataset(BaseImageCaptionDataset):
         self._train_size = train_size
         super().__init__(dataset_path, image_transform, caption_transform, *args, **kwargs)
         self._text_max_length = text_max_length if text_max_length > 0 and text_max_length < len(SAMPLE_TEXT) else len(SAMPLE_TEXT)
-        self._image_size = img_size
+        self._image_size = tuple(img_size)
 
     def _get_image_paths(self) -> list[Path]:
         return [Path("dummy") for _ in range(self._train_size)]

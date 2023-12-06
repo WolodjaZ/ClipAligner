@@ -2,7 +2,8 @@ from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from functools import partial
 from loguru import logger
-from typing import Callable, Dict
+from torchvision import transforms
+from typing import Callable, Dict, Optional, Tuple
 
 from .base import BaseImageCaptionDataset, BaseImageDataset, BaseCaptionDataset, DatasetNotImplementedError
 from .dumb import DumbImageDataset, DumbCaptionDataset, DumbImageCaptionDataset
@@ -20,7 +21,7 @@ except ImportError:
     tokenizer_type_slow = tokenizer_type_fast = None
 
 
-def get_dataset(cfg: dict | DictConfig, transforms: Dict[str, Callable] | None = None) -> BaseImageDataset | BaseCaptionDataset | BaseImageCaptionDataset:
+def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = None) -> Tuple[BaseImageDataset, Optional[BaseImageDataset]] | Tuple[BaseCaptionDataset, Optional[BaseCaptionDataset]] | Tuple[BaseImageCaptionDataset, Optional[BaseImageCaptionDataset]]:
     """Get the dataset.
     
     Raises:
@@ -28,9 +29,9 @@ def get_dataset(cfg: dict | DictConfig, transforms: Dict[str, Callable] | None =
     
     Args:
         cfg (DictConfig | dict): Configuration file containing "name" and "dataset_path" key and other parameters.
-        transforms (Dict[str, Callable] | None): Transforms to apply to the dataset.
+        transfor (Dict[str, Callable] | None): Transforms to apply to the dataset.
     Returns:
-         BaseImageDataset | BaseCaptionDataset | BaseImageCaptionDataset: Dataset.
+        (BaseImageDataset, BaseImageDataset | None) | (BaseCaptionDataset, BaseCaptionDataset | None) | (BaseImageCaptionDataset, BaseImageCaptionDataset | None): Dataset for train and validation.
     """
     # Transform the cfg to dictionary
     if isinstance(cfg, DictConfig):
@@ -42,9 +43,9 @@ def get_dataset(cfg: dict | DictConfig, transforms: Dict[str, Callable] | None =
     max_length = cfg.pop("text_max_length", None)
 
     # Check transforms dict
-    if transforms is not None:
-        image_transform = transforms.get("image")
-        caption_transform = transforms.get("caption")
+    if transfor is not None:
+        image_transform = transfor.get("image")
+        caption_transform = transfor.get("caption")
         caption_transform = (
             set_tokenizer(caption_transform, max_length=max_length)
             if (isinstance(caption_transform, (Callable, tuple)))
@@ -66,19 +67,25 @@ def get_dataset(cfg: dict | DictConfig, transforms: Dict[str, Callable] | None =
     # Convert to Path
     dataset_path = Path(dataset_path)
 
+    name = name.lower()
     # Get the dataset based on the name. The Image or Caption datasets
     if name == "dumb_image":
-        return DumbImageDataset(dataset_path, transform=image_transform, **cfg)
+        image_transform = transforms.Compose(image_transform)
+        return DumbImageDataset(dataset_path, transform=image_transform, **cfg), None
     elif name == "dumb_caption":
-        return DumbCaptionDataset(dataset_path, transform=caption_transform, **cfg)
+        return DumbCaptionDataset(dataset_path, transform=caption_transform, **cfg), None
     elif name == "dumb_image_caption":
-        return DumbImageCaptionDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg)
+        image_transform = transforms.Compose(image_transform)
+        return DumbImageCaptionDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "cc3m":
-        return CC3MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg)
+        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        return CC3MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "cc12m":
-        return CC12MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg)
+        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        return CC12MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "laion400":
-        return Laion400Dataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg)
+        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        return Laion400Dataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     else:
         raise DatasetNotImplementedError(f"Dataset {name} is not implemented.")
 
@@ -92,4 +99,4 @@ def set_tokenizer(tokenizer: tokenizer_type, max_length: int | None = None) -> t
     Returns:
         tokenizer_type: Tokenizer.
     """
-    return partial(tokenizer, max_length=max_length, padding=True, truncation=True, return_tensors="pt") if max_length is not None else partial(tokenizer, padding=True, truncation=True, return_tensors="pt")
+    return partial(tokenizer, max_length=max_length, padding="max_length", truncation=True, return_tensors="pt") if max_length is not None else partial(tokenizer, padding=True, truncation=True, return_tensors="pt")

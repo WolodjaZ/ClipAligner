@@ -2,22 +2,23 @@ import os
 import time
 import torch
 import hydra
+import rootutils
 import lightning as L
 from tqdm import tqdm
 from pathlib import Path
 from loguru import logger
-from dotenv import load_dotenv
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 from typing import Callable
 from lightning.fabric.loggers import TensorBoardLogger
 
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True, dotenv=True, cwd=False)
+
 from src.models import create_model, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
 from src.datasets import get_dataset
-from src.utils import set_logger, set_seed, get_custom_scheduler, AverageMeter, wrap_output
+from src.utils import set_logger, set_seed, get_custom_scheduler, AverageMeter, wrap_output, all_gather_object
 from src.losses import get_loss_fn, BaseImageCaptionLoss, BaseImageLoss, BaseCaptionLoss
 from src.eval import validate
 
-load_dotenv()
 MAIN_CONFIG = os.getenv("MAIN_CONFIG")
 
 
@@ -51,7 +52,7 @@ def train_on_epoch(
     loss_meter = AverageMeter()
     
     # Iterate over the dataloader
-    for batch_idx, (images, captions) in enumerate(progress_bar := tqdm(dataloader)):
+    for batch_idx, (images, captions) in enumerate(progress_bar := tqdm(dataloader, disable=fabric.global_rank != 0)):
         # Forward pass
         optimizer.zero_grad()
         output = model(images, captions)
@@ -73,7 +74,9 @@ def train_on_epoch(
         
         # Log the loss
         if batch_idx % batch_freq_print == 0 or batch_idx == len(dataloader) - 1:
-            progress_bar.set_description(f"Training - Batch {batch_idx}/{len(dataloader)} - Loss: {total_loss.item():.4f}")
+            progress_bar.set_description(
+                f"Train Epoch: {epoch} ({int(100.0 * (batch_idx+1) / len(dataloader)):2d}%) Loss: {total_loss.item():.6f}"
+            )
     
     # Step the scheduler
     lr = optimizer.param_groups[0]["lr"]
@@ -85,21 +88,14 @@ def train_on_epoch(
     
     return loss_meter.avg, lr
     
-def train(cfg: DictConfig) -> None:
+def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     """Main training function.
     
     Args:
         cfg (DictConfig): Configuration file.
+        fabric (L.fabric.Fabric): Lightning fabric.
+        output_dir (Path): Path to the output directory.
     """
-    # Set the loggers
-    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
-    loggers = [TensorBoardLogger(root_dir=output_dir)] if cfg.vis_logger else None
-    
-    # Set the pytorch lightning
-    fabric = L.Fabric(**cfg.fabric, loggers=loggers)
-    fabric.launch()
-    logger.info(f"Fabric: {fabric} is launched.")
-    
     # Set the seed
     fabric.seed_everything(cfg.seed)
     # set_seed(cfg.seed)
@@ -112,8 +108,9 @@ def train(cfg: DictConfig) -> None:
     model = create_model(cfg.model)
     logger.info(f"Model: {model}")
 
-    # Set the dataset
-    train_dataset, val_dataset = get_dataset(cfg.dataset, transfor=model.get_transformations())
+    # Set the dataset. Let rank 0 download the data first, then everyone will load MNIST
+    with fabric.rank_zero_first(local=False):  # set `local=True` if your filesystem is not shared between machines
+        train_dataset, val_dataset = get_dataset(cfg.dataset, transfor=model.get_transformations())
     logger.info(f"Train Dataset: {train_dataset} | Validation Dataset: {val_dataset}")
 
     # Set the dataloader
@@ -174,6 +171,9 @@ def train(cfg: DictConfig) -> None:
         logger.info(f"Scheduler: {scheduler}")
 
     # Get the loss function
+    with open_dict(cfg):
+        cfg.loss.rank = cfg.global_rank
+        cfg.loss.world_size = cfg.world_size
     loss_fn = get_loss_fn(cfg.loss)
     logger.info(f"Loss: {loss_fn}")
 
@@ -181,6 +181,11 @@ def train(cfg: DictConfig) -> None:
     save_dir = output_dir / cfg.save_dir
     save_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Save directory: {save_dir}")
+    
+    # WAit for distributed nodes to finish
+    if cfg.world_size > 1:
+        logger.info("Waiting for distributed nodes to finish setting up...")
+        fabric.barrier("setup")
     
     # Start training
     metrics = None
@@ -202,7 +207,10 @@ def train(cfg: DictConfig) -> None:
             }
             fabric.save(save_dir / f"epoch_{epoch}.ckpt", checkpoint_dict)
             logger.info(f"Checkpoint is saved at {save_dir / f'epoch_{epoch}.ckpt'}")
-    
+
+        # Wait for distributed nodes to finish
+        if cfg.world_size > 1:
+            fabric.barrier("epoch")
 
 @hydra.main(version_base=None, config_name="train", config_path=MAIN_CONFIG)
 def main(cfg: DictConfig) -> int:
@@ -213,20 +221,48 @@ def main(cfg: DictConfig) -> int:
     Returns:
         int: 0 if the training is successful. 1 otherwise.
     """
+    # # Set the GPU
+    # if torch.cuda.is_available():
+    #     # This enables tf32 on Ampere GPUs which is only 8% slower than
+    #     # float16 and almost as accurate as float32
+    #     # This was a default in pytorch until 1.12
+    #     torch.backends.cuda.matmul.allow_tf32 = True
+    #     torch.backends.cudnn.benchmark = True
+    #     torch.backends.cudnn.deterministic = False
+    
+    # Set the loggers
+    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    loggers = [TensorBoardLogger(root_dir=output_dir)] if cfg.vis_logger else None
+    
+    # Set the pytorch lightning
+    fabric = L.Fabric(**cfg.fabric, loggers=loggers)
+    fabric.launch()
+    
+    # Ad distributed params to the config
+    with open_dict(cfg):
+        cfg.global_rank = fabric.global_rank
+        cfg.world_size = fabric.world_size
+        cfg.local_rank = fabric.local_rank
+        cfg.node_rank = fabric.node_rank
+    
     # Set the logger
-    set_logger(cfg.log_file, cfg.log_level, cfg.verbose)
+    set_logger(cfg.log_file, cfg.log_level, cfg.verbose, cfg.global_rank)
+    logger.info(f"Fabric: {fabric} is launched.")
+    if cfg.world_size > 1:
+        logger.info(f"Running in distributed mode with {cfg.world_size} nodes.")
     
     # start training
+    error_code = 0
     start_time = time.time()
     try:
-        train(cfg)
+        train(cfg, fabric=fabric, output_dir=output_dir)
     except Exception as e:
         logger.exception(e)
-        return 1
+        error_code = 1
     
     # return 0 if the training is successful
     logger.info(f"Training FINISHED. Total time: {(time.time() - start_time) / 60:.2f} minutes")
-    return 0
+    return error_code
    
 
 if __name__ == "__main__":

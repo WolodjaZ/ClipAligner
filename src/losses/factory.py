@@ -2,7 +2,13 @@ from omegaconf import DictConfig, OmegaConf
 from .base import BaseImageCaptionLoss, BaseImageLoss, BaseCaptionLoss, LossNotImplementedError
 from .clip import ClipLoss, DistillClipLoss, SigLipLoss, CoCaLoss
 
-def get_loss_fn(cfg: dict | DictConfig) -> BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss:
+try:
+    from lightning.fabric import Fabric
+except ImportError:
+    Fabric = None
+    
+
+def get_loss_fn(cfg: dict | DictConfig, fabric: Fabric | None = None) -> BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss:
     """Get the loss function.
     
     Raises:
@@ -10,6 +16,7 @@ def get_loss_fn(cfg: dict | DictConfig) -> BaseImageCaptionLoss | BaseImageLoss 
     
     Args:
         cfg (dict | DictConfig): Configuration file containing "name" key and other parameters.
+        fabric (Fabric | None, optional): Fabric object. Defaults to None.
     Returns:
         BaseImageCaptionLoss | BaseImageLoss | BaseCaptionLoss: Loss function.
     """
@@ -25,12 +32,12 @@ def get_loss_fn(cfg: dict | DictConfig) -> BaseImageCaptionLoss | BaseImageLoss 
     name = name.lower()
     # Get the loss function based on the name
     if name == "clip":
-        return ClipLoss(**cfg)
+        return ClipLoss(**cfg, fabric=fabric)
     elif name == "coca":
-        return CoCaLoss(**cfg)
+        return CoCaLoss(**cfg, fabric=fabric)
     elif name == "distillclip":
-        return DistillClipLoss(**cfg)
+        return DistillClipLoss(**cfg, fabric=fabric)
     elif name == "siglip":
-        return SigLipLoss(**cfg)
+        return SigLipLoss(**cfg, fabric=fabric)
     else:
         raise LossNotImplementedError(f"Loss {name} is not implemented.")

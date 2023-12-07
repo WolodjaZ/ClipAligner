@@ -1,4 +1,4 @@
-python-dotenv==1.0.0
+rootutils==1.0.7
 loguru==0.7.2
 tqdm==4.66.1
 jsonargparse==4.27.0

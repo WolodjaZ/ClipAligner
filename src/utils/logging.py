@@ -4,7 +4,7 @@ from pathlib import Path
 from loguru import logger
 
 
-def set_logger(log_file: str, level: str, verbose: bool = False) -> None:
+def set_logger(log_file: str, level: str, verbose: bool = False, rank: int = 0) -> None:
     """Set up a logger with specified settings.
     
     Raises:
@@ -16,6 +16,7 @@ def set_logger(log_file: str, level: str, verbose: bool = False) -> None:
         log_file (str): Path to the log file where logs will be written.
         level (str): Logging level, e.g., 'INFO', 'DEBUG', 'ERROR'.
         verbose (bool, optional): If True, also print logs to stdout. Defaults to False.
+        rank (int, optional): Rank of the current process. Defaults to 0.
     
     Example usage:
         set_logger("path/to/logfile.log", "INFO", verbose=True)
@@ -42,8 +43,8 @@ def set_logger(log_file: str, level: str, verbose: bool = False) -> None:
     try:
         logger.remove() # Remove this line if you want to use multiple loggers
         logger.add(log_file, rotation="10 MB", level=level, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
-        if verbose:
-            logger.add(sys.stdout, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
+        if verbose and rank == 0:
+            logger.add(sys.stdout, colorize=True, level="INFO", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <blue>{level}</blue> | <level>{message}</level>")
     except Exception as e:
         # sourcery skip: raise-specific-error
         raise Exception(f"Error setting up logger: {e}") from e

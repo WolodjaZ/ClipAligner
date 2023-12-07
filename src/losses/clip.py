@@ -16,11 +16,6 @@ try:
 except ImportError:
     has_distributed = False
 
-try:
-    import horovod.torch as hvd # type: ignore
-except ImportError:
-    hvd = None
-
 
 def gather_features(
         image_features,
@@ -29,18 +24,17 @@ def gather_features(
         gather_with_grad=False,
         rank=0,
         world_size=1,
-        use_horovod=False
+        fabric=None,
 ):
     assert has_distributed, 'torch.distributed did not import correctly, please use a PyTorch version with support.'
-    if use_horovod:
-        assert hvd is not None, 'Please install horovod'
+    if fabric is not None:
         if gather_with_grad:
-            all_image_features = hvd.allgather(image_features)
-            all_text_features = hvd.allgather(text_features)
+            all_image_features = fabric.all_gather(image_features)
+            all_text_features = fabric.all_gather(text_features)
         else:
             with torch.no_grad():
-                all_image_features = hvd.allgather(image_features)
-                all_text_features = hvd.allgather(text_features)
+                all_image_features = fabric.all_gather(image_features)
+                all_text_features = fabric.all_gather(text_features)
             if not local_loss:
                 # ensure grads for local rank when all_* features don't have a gradient
                 gathered_image_features = list(all_image_features.chunk(world_size, dim=0))
@@ -76,7 +70,7 @@ class ClipLoss(BaseImageCaptionLoss):
             cache_labels=False,
             rank=0,
             world_size=1,
-            use_horovod=False,
+            fabric=None,
     ):
         super().__init__()
         self.local_loss = local_loss
@@ -84,7 +78,7 @@ class ClipLoss(BaseImageCaptionLoss):
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
-        self.use_horovod = use_horovod
+        self.fabric = fabric
 
         # cache state
         self.prev_num_logits = 0
@@ -107,7 +101,7 @@ class ClipLoss(BaseImageCaptionLoss):
         if self.world_size > 1:
             all_image_features, all_text_features = gather_features(
                 image_features, text_features,
-                self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
+                self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.fabric)
 
             if self.local_loss:
                 logits_per_image = logit_scale * image_features @ all_text_features.T
@@ -146,7 +140,7 @@ class CoCaLoss(ClipLoss):
             cache_labels=False,
             rank=0,
             world_size=1,
-            use_horovod=False,
+            fabric=None,
     ):
         super().__init__(
             local_loss=local_loss,
@@ -154,7 +148,7 @@ class CoCaLoss(ClipLoss):
             cache_labels=cache_labels,
             rank=rank,
             world_size=world_size,
-            use_horovod=use_horovod,
+            fabric=fabric,
         )
 
         self.clip_loss_weight = clip_loss_weight
@@ -189,7 +183,7 @@ class DistillClipLoss(ClipLoss):
             cache_labels,
             rank,
             world_size,
-            use_horovod,
+            fabric,
     ):
         super().__init__(
             local_loss=local_loss,
@@ -197,7 +191,7 @@ class DistillClipLoss(ClipLoss):
             cache_labels=cache_labels,
             rank=rank,
             world_size=world_size,
-            use_horovod=use_horovod,
+            fabric=fabric,
         )
 
     def dist_loss(self, teacher_logits, student_logits):
@@ -341,14 +335,13 @@ class SigLipLoss(BaseImageCaptionLoss):
             rank=0,
             world_size=1,
             bidir=True,
-            use_horovod=False,
+            fabric=None,
     ):
         super().__init__()
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
-        assert not use_horovod  # FIXME need to look at hvd ops for ring transfers
-        self.use_horovod = use_horovod
+        self.fabric = fabric
         self.bidir = bidir
 
         # cache state FIXME cache not currently used, worthwhile?

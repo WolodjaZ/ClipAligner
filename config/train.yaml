@@ -29,6 +29,7 @@ epochs: 2
 save_dir: "checkpoints"
 save_period: 1
 checkpoint: null
+calculate_metrics: ["clip_loss", "image_to_text", "text_to_image"]
 
 fabric:
   accelerator: "auto"

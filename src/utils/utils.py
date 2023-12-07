@@ -135,6 +135,21 @@ def all_gather_object(obj: Any, world_size: int = 1, fabric: Fabric | None=None)
     return objects
 
 
+def format_dict_print(dictionary: dict | None, indent: int = 0) -> str:
+    """Format a dictionary for printing.
+
+    Args:
+        dictionary (dict): The dictionary to format. If None, an empty string is returned.
+        indent (int, optional): The indentation level. Defaults to 0.
+
+    Returns:
+        str: The formatted dictionary.
+    """
+    return "" if dictionary is None else "".join(
+        f"{' ' * indent}$ {key}: {value} $" for key, value in dictionary.items()
+    )
+
+
 def parse_args() -> Namespace:
     """
     Parse command line arguments.

@@ -7,15 +7,16 @@ import lightning as L
 from tqdm import tqdm
 from pathlib import Path
 from loguru import logger
+from copy import deepcopy
 from omegaconf import DictConfig, open_dict
-from typing import Callable
 from lightning.fabric.loggers import TensorBoardLogger
+from typing import Callable
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True, dotenv=True, cwd=False)
 
 from src.models import create_model, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
 from src.datasets import get_dataset
-from src.utils import set_logger, set_seed, get_custom_scheduler, AverageMeter, wrap_output, all_gather_object
+from src.utils import set_logger, set_seed, get_custom_scheduler, AverageMeter, wrap_output, format_dict_print
 from src.losses import get_loss_fn, BaseImageCaptionLoss, BaseImageLoss, BaseCaptionLoss
 from src.eval import validate
 
@@ -189,16 +190,17 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     
     # Start training
     metrics = None
+    val_dataloader = deepcopy(train_dataloader) #TODO: Remove this
     logger.info(f"Start training for {cfg.epochs} epochs from {start_epoch} epoch...")
     for epoch in range(start_epoch, cfg.epochs):
         loss, lr  = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, fabric, epoch, batch_freq_print=cfg.batch_freq_print)
         fabric.log_dict({"train_loss": loss, "lr": lr})
         if val_dataloader is not None:
-            metrics = validate(dataloader=val_dataloader, model=model, loss_fn=loss_fn, fabric=fabric)
+            metrics = validate(model=model, dataloader=val_dataloader, fabric=fabric, epoch=epoch, calculate_metrics=cfg.calculate_metrics, batch_freq_print=cfg.batch_freq_print)
             fabric.log_dict(metrics)
-        logger.info(f"Epoch: {epoch} | Loss: {loss:.4f} | LR: {lr} | Evaluate Metrics: {metrics}")
+            
+        logger.info(f"Epoch: {epoch} | Loss: {loss:.4f} | LR: {lr} | Evaluate Metrics:{format_dict_print(metrics)}")
         if epoch % cfg.save_period == 0:
-            # logger.info(torch.cuda.memory_summary())
             checkpoint_dict = {
                 "epoch": epoch,
                 "loss": loss,
@@ -211,6 +213,10 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
         # Wait for distributed nodes to finish
         if cfg.world_size > 1:
             fabric.barrier("epoch")
+        
+        # Log the memory usage
+        if fabric.device.type == "cuda":
+            logger.info(torch.cuda.memory_summary())
 
 @hydra.main(version_base=None, config_name="train", config_path=MAIN_CONFIG)
 def main(cfg: DictConfig) -> int:
@@ -260,8 +266,9 @@ def main(cfg: DictConfig) -> int:
         logger.exception(e)
         error_code = 1
     
-    # return 0 if the training is successful
+    # Log the total time and memory usage
     logger.info(f"Training FINISHED. Total time: {(time.time() - start_time) / 60:.2f} minutes")
+    # return 0 if the training is successful
     return error_code
    
 

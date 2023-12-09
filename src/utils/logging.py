@@ -41,7 +41,7 @@ def set_logger(log_file: str, level: str, verbose: bool = False, rank: int = 0) 
 
     # Setup logger
     try:
-        logger.remove() # Remove this line if you want to use multiple loggers
+        # logger.remove() # Remove this line if you want to use multiple loggers
         logger.add(log_file, rotation="10 MB", level=level, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
         if verbose and rank == 0:
             logger.add(sys.stdout, colorize=True, level="INFO", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <blue>{level}</blue> | <level>{message}</level>")

@@ -21,7 +21,7 @@ except ImportError:
     tokenizer_type_slow = tokenizer_type_fast = None
 
 
-def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = None) -> Tuple[BaseImageDataset, Optional[BaseImageDataset]] | Tuple[BaseCaptionDataset, Optional[BaseCaptionDataset]] | Tuple[BaseImageCaptionDataset, Optional[BaseImageCaptionDataset]]:
+def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = None, name: str | None = None) -> Tuple[BaseImageDataset, Optional[BaseImageDataset]] | Tuple[BaseCaptionDataset, Optional[BaseCaptionDataset]] | Tuple[BaseImageCaptionDataset, Optional[BaseImageCaptionDataset]]:
     """Get the dataset.
     
     Raises:
@@ -30,6 +30,7 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
     Args:
         cfg (DictConfig | dict): Configuration file containing "name" and "dataset_path" key and other parameters.
         transfor (Dict[str, Callable] | None): Transforms to apply to the dataset.
+        name (str | None): Name of the dataset.
     Returns:
         (BaseImageDataset, BaseImageDataset | None) | (BaseCaptionDataset, BaseCaptionDataset | None) | (BaseImageCaptionDataset, BaseImageCaptionDataset | None): Dataset for train and validation.
     """
@@ -37,8 +38,19 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
     if isinstance(cfg, DictConfig):
         cfg = OmegaConf.to_container(cfg, resolve=True)
 
-    # Extract the name, dataset path, text_max_length if provided
-    name = cfg.pop("name", None)
+    # Extract the name
+    name = cfg.pop("name", None) if name is None else name
+    
+    # Checj if the split is provided # sourcery skip: remove-redundant-if
+    if "train" and "val" in cfg:
+        return get_dataset(cfg["train"], transfor, name)[0], get_dataset(cfg["val"], transfor, name)[0]
+    elif "train" in cfg:
+        cfg = cfg["train"]
+    elif "val" in cfg:
+        raise DatasetNotImplementedError("Validation dataset is provided but not the train dataset.")
+        
+    
+    # Extract the dataset path
     dataset_path = cfg.pop("dataset_path", None)
     max_length = cfg.pop("text_max_length", None)
 

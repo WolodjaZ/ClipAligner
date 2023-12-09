@@ -190,7 +190,6 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     
     # Start training
     metrics = None
-    val_dataloader = deepcopy(train_dataloader) #TODO: Remove this
     logger.info(f"Start training for {cfg.epochs} epochs from {start_epoch} epoch...")
     for epoch in range(start_epoch, cfg.epochs):
         loss, lr  = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, fabric, epoch, batch_freq_print=cfg.batch_freq_print)

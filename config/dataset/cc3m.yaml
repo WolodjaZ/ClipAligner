@@ -1,0 +1,9 @@
+name: cc3m
+train:
+  dataset_path: ./ccm3_data/extracted
+  text_max_length: 50
+  train_size: 0.8
+val:
+  dataset_path: ./ccm3_data/extracted
+  text_max_length: 50
+  train_size: 0.2

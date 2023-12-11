@@ -141,6 +141,11 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     model = fabric.setup(model)
     optimizer = fabric.setup_optimizers(optimizer)
     
+    # compile torch model, thread about it: https://github.com/Lightning-AI/pytorch-lightning/issues/17250
+    if cfg.compile:
+        logger.info("Compiling the model with torch.compile ...")
+        torch.compile(model)
+    
     # Set the dataloaders
     train_dataloader = fabric.setup_dataloaders(train_dataloader)
     if val_dataloader is not None:
@@ -215,7 +220,7 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
         
         # Log the memory usage
         if fabric.device.type == "cuda":
-            logger.info(torch.cuda.memory_summary())
+            logger.debug(torch.cuda.memory_summary())
 
 @hydra.main(version_base=None, config_name="train", config_path=MAIN_CONFIG)
 def main(cfg: DictConfig) -> int:

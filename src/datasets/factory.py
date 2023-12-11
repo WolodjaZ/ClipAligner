@@ -66,7 +66,6 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
         )
     else:
         image_transform, caption_transform = None, None
-
     caption_transform_name = f"{type(caption_transform)} of {type(caption_transform.func)}" if isinstance(caption_transform, partial) else type(caption_transform)
     logger.debug(f"Transforms should be provided as a dict with keys 'image' or 'caption'. Provided transforms image {type(image_transform)} and caption {caption_transform_name}")
 
@@ -90,13 +89,13 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
         image_transform = transforms.Compose(image_transform)
         return DumbImageCaptionDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "cc3m":
-        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        image_transform = transforms.Compose([transforms.ToTensor()] + image_transform) if isinstance(image_transform, list) else image_transform
         return CC3MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "cc12m":
-        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        image_transform = transforms.Compose([transforms.ToTensor()] + image_transform) if isinstance(image_transform, list) else image_transform
         return CC12MDataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     elif name == "laion400":
-        image_transform = transforms.Compose(image_transform.append(transforms.ToTensor())) if isinstance(image_transform, list) else image_transform
+        image_transform = transforms.Compose([transforms.ToTensor()] + image_transform) if isinstance(image_transform, list) else image_transform
         return Laion400Dataset(dataset_path, image_transform=image_transform, caption_transform=caption_transform, **cfg), None
     else:
         raise DatasetNotImplementedError(f"Dataset {name} is not implemented.")

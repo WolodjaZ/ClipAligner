@@ -1,6 +1,6 @@
 defaults:
   - model: clip_aligner
-  - dataset: dumb
+  - dataset: cc3m
   - loss: clip
   - override hydra/job_logging: disabled
   # - hydra/hydra_logging: disabled
@@ -11,6 +11,7 @@ log_level: "INFO"
 vis_logger: True
 verbose: true
 seed: 1998
+compile: True
 batch_size: 8
 num_workers: 0
 batch_freq_print: 1

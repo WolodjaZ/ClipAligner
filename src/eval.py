@@ -1,13 +1,17 @@
+import time
 import torch
-import argparse
+import rootutils
 import lightning as L
 from tqdm import tqdm
 from loguru import logger
+from jsonargparse import Namespace
 import torch.nn.functional as F
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True, dotenv=True, cwd=False)
 
 from src.models import create_model, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
 from src.datasets import get_dataset
-from src.utils import parse_args, set_logger, set_seed, AverageMeter, wrap_output, all_gather_object, format_dict_print
+from src.utils import parse_args, set_logger, AverageMeter, wrap_output, all_gather_object, format_dict_print
 
 
 ALLOWED_METRICS = ["clip_loss", "generative_loss", "image_to_text", "text_to_image"]
@@ -73,8 +77,7 @@ def validate(
     dataloader: torch.utils.data.DataLoader,
     fabric: L.fabric.Fabric,
     epoch: int,
-    calculate_metrics: list | None = None,
-    batch_freq_print: int = 100) -> list:
+    calculate_metrics: list | None = None) -> list:
     """Evaluate the model and calculate loss and metrics.
     
     Args:
@@ -86,7 +89,6 @@ def validate(
         calculate_metrics (list | None): List of additional metrics to calculate. 
             If None all metrics are calculated. If empty list no metrics are calculated.
             Only supported metrics are allowed: ALLOWED_METRICS.
-        batch_freq_print (int): Frequency of logging training progress.
     Returns:
         List (list) of calculated metric values.
     """
@@ -141,10 +143,9 @@ def validate(
                 metrics_meter["clip_loss"].update(total_loss.item(), batch_size)
 
             # Log the loss
-            if batch_idx % batch_freq_print == 0 or batch_idx == len(dataloader) - 1:
-                progress_bar.set_description(
-                    f"Validating Epoch: {epoch} ({int(100.0 * (batch_idx+1) / len(dataloader)):2d}%) Loss: {total_loss.item():.6f}"
-                )
+            progress_bar.set_description(
+                f"Validating Epoch: {epoch} ({int(100.0 * (batch_idx+1) / len(dataloader)):2d}%) Loss: {total_loss.item():.6f}"
+            )
 
         # Gather additional metrics
         additional_metrics = get_clip_metrics(
@@ -174,41 +175,73 @@ def validate(
     return {f"val_{key}": metric_meter.avg for key, metric_meter in metrics_meter.items()}
 
 
-def evaluate(args: argparse.Namespace) -> None:
+def evaluate(args: Namespace, fabric: L.fabric.Fabric) -> None:
     """Evaluate the model.
     
     Args:
-        args (dict): Arguments.
-        logger (logger): Logger.
+        args (Namespace): Arguments.
+        fabric (L.fabric.Fabric): Lightning fabric.
     """
     # Set the seed
-    set_seed(args.seed)
+    fabric.seed_everything(args.seed)
     logger.info(f"Seed: {args.seed}")
     
     # Set the device
-    device = torch.device("cuda" if torch.cuda.is_available() and args.use_gpu else "cpu")
-    logger.info(f"Device: {device}")
+    logger.info(f"Device: {fabric.device}")
     
-    # Load the model
-    model = create_model(args.model_name, model_checkpoint=args.model_checkpoint)
-    model.to(device)
+    # Load the checkpoint
+    try:
+        checkpoint = fabric.load(args.checkpoint)
+        model_params = checkpoint["params"]
+        model_state_dict = checkpoint["state_dict"]
+        logger.info(f"Checkpoint: {args.checkpoint} with params: {model_params}")
+    except Exception as e:
+        logger.error(f"Error loading checkpoint: {e}")
+    
+    # Set the model
+    model = create_model(model_params)
     logger.info(f"Model: {model}")
     
     # Get the dataset
-    dataset = get_dataset(args.dataset_name, args.dataset_path)
+    with fabric.rank_zero_first(local=False):  # set `local=True` if your filesystem is not shared between machines
+        dataset, _ = get_dataset({"name": args.dataset,
+                                  "val": {
+                                            "dataset_path": args.dataset_path, 
+                                            "text_max_length": args.text_max_length,
+                                            "train_size": args.train_size}},
+                                 transfor=model.get_transformations())
     logger.info(f"Dataset: {dataset}")
     
-    # Get the dataloader
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
-    logger.info("Initialized dataloader.")
+    # Set the dataloader
+    dataloader = torch.utils.data.DataLoader(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=True
+    )
+    
+    # Set the model and dataloader
+    dataloader = fabric.setup_dataloaders(dataloader)
+    model = fabric.setup(model)
+    if args.compile:
+        logger.info("Compiling the model with torch.compile ...")
+        torch.compile(model)
+
+    model.load_state_dict(model_state_dict)
+    
+    # Wait for distributed nodes to finish
+    if fabric.world_size > 1:
+        logger.info("Waiting for distributed nodes to finish setting up...")
+        fabric.barrier("setup")
     
     # Evaluate
     logger.info("Start evaluation...")
-    metrics = validate(model, dataloader, loss_fn, device, args.calculate_metrics)
+    metrics = validate(model=model, dataloader=dataloader, fabric=fabric, epoch=0, calculate_metrics=None)
     
     # Log the metrics
     logger.info(f"Metrics: {format_dict_print(metrics)}")
-    logger.info("Evaluation finished.")
+
 
 def main() -> int:
     """Main function.
@@ -219,18 +252,30 @@ def main() -> int:
     # Parse the arguments
     args = parse_args()
     
+    # Set the pytorch lightning
+    fabric = L.Fabric(accelerator=args.accelerator, strategy=args.strategy)
+    fabric.launch()
+    
     # Set the logger
-    set_logger(args)
+    set_logger(log_file="", level="INFO", verbose=True, rank=fabric.global_rank, train=False)
+    logger.info(f"Fabric: {fabric} is launched.")
+    if fabric.world_size > 1:
+        logger.info(f"Running in distributed mode with {fabric.world_size} nodes.")
     
-    # evaluate
+    # start evaluation
+    error_code = 0
+    start_time = time.time()
     try:
-        evaluate(args)
+        evaluate(args, fabric=fabric)
     except Exception as e:
-        logger.error(e)
-        return 1
+        logger.exception(e)
+        error_code = 1
     
-    return 0
-    
+    # Log the total time and memory usage
+    logger.info(f"Evaluation FINISHED. Total time: {(time.time() - start_time) / 60:.2f} minutes")
+    # return 0 if the training is successful
+    return error_code
+
 
 if __name__ == "__main__":
     main()

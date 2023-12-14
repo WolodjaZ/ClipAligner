@@ -8,15 +8,15 @@ from tqdm import tqdm
 from pathlib import Path
 from loguru import logger
 from copy import deepcopy
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, open_dict, OmegaConf
 from lightning.fabric.loggers import TensorBoardLogger
 from typing import Callable
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True, dotenv=True, cwd=False)
 
-from src.models import create_model, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
+from src.models import create_model, check_model_params, BaseImageCaptionModel, BaseImageModel, BaseCaptionModel
 from src.datasets import get_dataset
-from src.utils import set_logger, set_seed, get_custom_scheduler, AverageMeter, wrap_output, format_dict_print
+from src.utils import set_logger, get_custom_scheduler, AverageMeter, wrap_output, format_dict_print
 from src.losses import get_loss_fn, BaseImageCaptionLoss, BaseImageLoss, BaseCaptionLoss
 from src.eval import validate
 
@@ -31,7 +31,7 @@ def train_on_epoch(
     dataloader: torch.utils.data.DataLoader,
     fabric: L.fabric.Fabric,
     epoch: int,
-    batch_freq_print: int = 100) -> (float, float | None):
+    batch_freq_print: int = 100) -> float:
     """Train the model on an epoch.
     
     Args:
@@ -44,50 +44,57 @@ def train_on_epoch(
         epoch (int): Current epoch.
         batch_freq_print (int): Frequency of logging training progress.
     Returns:
-        float, float | None: Average loss and current learning rate. None if no scheduler is used.
+        float: Average loss on the epoch.
     """
     # Set the model to train mode
     model.train()
-    
+
     # Set the average meter
     loss_meter = AverageMeter()
-    
+
     # Iterate over the dataloader
+    scheduler_step = bool(hasattr(scheduler, "step"))
     for batch_idx, (images, captions) in enumerate(progress_bar := tqdm(dataloader, disable=fabric.global_rank != 0)):
+        # step scheduler if custom scheduler
+        step = epoch * len(dataloader) + batch_idx
+        if scheduler and not scheduler_step:
+            scheduler(step)
+
         # Forward pass
         optimizer.zero_grad()
         output = model(images, captions)
-        
+
         # wrap the output in a dictionary
         if not isinstance(output, dict):
             output = wrap_output(output)
-        
+
         # Compute the loss
         losses = loss_fn(**output, output_dict=True)
         total_loss = sum(losses.values())
-        
+
         # Backward pass
         fabric.backward(total_loss)
         optimizer.step()
-        
+
         # Update the loss meter
         loss_meter.update(total_loss.item())
-        
+
         # Log the loss
+        progress_bar.set_description(
+            f"Train Epoch: {epoch} ({int(100.0 * (batch_idx+1) / len(dataloader)):2d}%) Loss: {total_loss.item():.6f}"
+        )
         if batch_idx % batch_freq_print == 0 or batch_idx == len(dataloader) - 1:
-            progress_bar.set_description(
-                f"Train Epoch: {epoch} ({int(100.0 * (batch_idx+1) / len(dataloader)):2d}%) Loss: {total_loss.item():.6f}"
-            )
+            lr = optimizer.param_groups[0]["lr"]
+            fabric.log_dict({
+                "train_loss": total_loss.item(),
+                "lr": lr
+            }, step=step)
+
+    # step scheduler if not custom scheduler
+    if scheduler and scheduler_step:
+        scheduler.step()
     
-    # Step the scheduler
-    lr = optimizer.param_groups[0]["lr"]
-    if scheduler:
-        try:
-            scheduler.step()
-        except AttributeError:
-            scheduler(epoch)
-    
-    return loss_meter.avg, lr
+    return loss_meter.avg
     
 def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     """Main training function.
@@ -99,15 +106,36 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     """
     # Set the seed
     fabric.seed_everything(cfg.seed)
-    # set_seed(cfg.seed)
     logger.info(f"Seed: {cfg.seed}")
 
     # Set the device
     logger.info(f"Device: {fabric.device}")
+    
+    # Load the checkpoints
+    start_epoch = 0
+    model_params = OmegaConf.to_container(cfg.model, resolve=True) if isinstance(cfg.model, DictConfig) else cfg.model
+    
+    model_state_dict = None
+    optimizer_state_dict = None
+    if cfg.checkpoint is not None:
+        logger.info(f"Loading checkpoint: {cfg.checkpoint} ...")
+        try:
+            checkpoint = fabric.load(cfg.checkpoint) # sourcery skip: extract-method, merge-else-if-into-elif, swap-if-else-branches
+            if not check_model_params(cfg.model, checkpoint["params"]):
+                logger.warning(f"Model parameters in the checkpoint: {model_params} are different from the current model parameters: {cfg.model}. So using loaded model parameters.")
+                model_params = checkpoint["params"]
+
+            model_state_dict = checkpoint["state_dict"]
+            optimizer_state_dict = checkpoint["optimizer"]
+            start_epoch = checkpoint["epoch"]
+            loss = checkpoint["loss"]
+            logger.info(f"Checkpoint: {cfg.checkpoint} | Completed Epoch: {start_epoch} | Loss: {loss}")
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {cfg.checkpoint} so continuing without it | Error: {e}")
 
     # Set the model
-    model = create_model(cfg.model)
-    logger.info(f"Model: {model}")
+    model = create_model(deepcopy(model_params))
+    logger.info(f"Model: {model} with hyperparameters: {model_params}")
 
     # Set the dataset. Let rank 0 download the data first, then everyone will load MNIST
     with fabric.rank_zero_first(local=False):  # set `local=True` if your filesystem is not shared between machines
@@ -151,30 +179,24 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     if val_dataloader is not None:
         val_dataloader = fabric.setup_dataloaders(val_dataloader)
     
-    # Load the checkpoint
-    start_epoch = 0
-    if cfg.checkpoint is not None:
-        try:
-            
-            checkpoint = fabric.load(cfg.checkpoint) # sourcery skip: extract-method
-            model.load_state_dict(checkpoint["state_dict"])
-            optimizer.load_state_dict(checkpoint["optimizer"])
-            start_epoch = checkpoint["epoch"]
-            loss = checkpoint["loss"]
-            logger.info(f"Checkpoint: {cfg.checkpoint} | Completed Epoch: {start_epoch} | Loss: {loss}")
-        except Exception as e:
-            logger.warning(f"Failed to load checkpoint: {cfg.checkpoint} so continuing without it | Error: {e}")
-
+    # Load the model and optimizer state dict
+    if model_state_dict is not None:
+        model.load_state_dict(model_state_dict)
+    if optimizer_state_dict is not None:
+        optimizer.load_state_dict(optimizer_state_dict)
+    
     # Set the scheduler
     if cfg.scheduler is None:
         scheduler = None
         logger.info("No scheduler is used.")
     else:
         if "_target_" not in cfg.scheduler:
-            scheduler = get_custom_scheduler(cfg.scheduler, optimizer=optimizer)
+            total_steps = len(train_dataloader) * cfg.epochs
+            scheduler = get_custom_scheduler(cfg.scheduler, optimizer=optimizer, base_lr=cfg.optimizer.lr, steps=total_steps)
+            logger.info(f"Scheduler: {scheduler} with hyperparameters: {cfg.scheduler} | Total Steps: {total_steps} | Base LR: {cfg.optimizer.lr}")
         else:
             scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer=optimizer)
-        logger.info(f"Scheduler: {scheduler}")
+            logger.info(f"Scheduler: {scheduler} with hyperparameters: {cfg.scheduler}")
 
     # Get the loss function
     with open_dict(cfg):
@@ -188,7 +210,7 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     save_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Save directory: {save_dir}")
     
-    # WAit for distributed nodes to finish
+    # Wait for distributed nodes to finish
     if cfg.world_size > 1:
         logger.info("Waiting for distributed nodes to finish setting up...")
         fabric.barrier("setup")
@@ -197,21 +219,23 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     metrics = None
     logger.info(f"Start training for {cfg.epochs} epochs from {start_epoch} epoch...")
     for epoch in range(start_epoch, cfg.epochs):
-        loss, lr  = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, fabric, epoch, batch_freq_print=cfg.batch_freq_print)
-        fabric.log_dict({"train_loss": loss, "lr": lr})
+        loss = train_on_epoch(model, optimizer, scheduler, loss_fn, train_dataloader, fabric, epoch, batch_freq_print=cfg.batch_freq_print)
+        fabric.log(name="avg_train_loss", value=loss, step=epoch)
         if val_dataloader is not None:
-            metrics = validate(model=model, dataloader=val_dataloader, fabric=fabric, epoch=epoch, calculate_metrics=cfg.calculate_metrics, batch_freq_print=cfg.batch_freq_print)
-            fabric.log_dict(metrics)
+            metrics = validate(model=model, dataloader=val_dataloader, fabric=fabric, epoch=epoch, calculate_metrics=cfg.calculate_metrics)
+            fabric.log_dict(metrics, step=epoch)
             
-        logger.info(f"Epoch: {epoch} | Loss: {loss:.4f} | LR: {lr} | Evaluate Metrics:{format_dict_print(metrics)}")
+        logger.info(f"Epoch: {epoch} | Loss: {loss:.4f} | Evaluate Metrics:{format_dict_print(metrics)}")
         if epoch % cfg.save_period == 0:
             checkpoint_dict = {
                 "epoch": epoch,
                 "loss": loss,
                 "state_dict": model,
                 "optimizer": optimizer,
+                "params": model_params
             }
             fabric.save(save_dir / f"epoch_{epoch}.ckpt", checkpoint_dict)
+            logger.info(model_params)
             logger.info(f"Checkpoint is saved at {save_dir / f'epoch_{epoch}.ckpt'}")
 
         # Wait for distributed nodes to finish
@@ -256,7 +280,7 @@ def main(cfg: DictConfig) -> int:
         cfg.node_rank = fabric.node_rank
     
     # Set the logger
-    set_logger(cfg.log_file, cfg.log_level, cfg.verbose, cfg.global_rank)
+    set_logger(cfg.log_file, cfg.log_level, cfg.verbose, cfg.global_rank, train=True)
     logger.info(f"Fabric: {fabric} is launched.")
     if cfg.world_size > 1:
         logger.info(f"Running in distributed mode with {cfg.world_size} nodes.")

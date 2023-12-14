@@ -83,3 +83,29 @@ def extract_models_config(cfg: dict) -> (dict | None, dict | None, dict | None):
     caption_cfg = cfg.pop("caption", None)
     alignment_cfg = cfg.pop("alignment", None)
     return image_cfg, caption_cfg, alignment_cfg
+
+def check_model_params(cfg_used: dict | DictConfig, cfg_loaded: dict | DictConfig) -> bool:
+    """Check if the model parameters are the same.
+
+    Args:
+        cfg_used (dict | DictConfig): Configuration file used.
+        cfg_loaded (dict | DictConfig): Configuration file loaded.
+    Returns:
+        bool: True if the parameters are the same, False otherwise.
+    """
+    # Transform the cfg to dictionary
+    if isinstance(cfg_used, DictConfig):
+        cfg_used = OmegaConf.to_container(cfg_used, resolve=True)
+    if isinstance(cfg_loaded, DictConfig):
+        cfg_loaded = OmegaConf.to_container(cfg_loaded, resolve=True)
+
+    # Extract the models
+    image_cfg_used, caption_cfg_used, alignment_cfg_used = extract_models_config(cfg_used)
+    image_cfg_loaded, caption_cfg_loaded, alignment_cfg_loaded = extract_models_config(cfg_loaded)
+
+    # Check if the models are the same
+    return (
+        image_cfg_used == image_cfg_loaded
+        and caption_cfg_used == caption_cfg_loaded
+        and alignment_cfg_used == alignment_cfg_loaded
+    )

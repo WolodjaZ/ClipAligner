@@ -118,7 +118,7 @@ def cosine_lr(optimizer: Optimizer, base_lr: float, warmup_length: int, steps: i
         return lr
     return _lr_adjuster
 
-def get_custom_scheduler(cfg: dict | DictConfig, optimizer: Optimizer) -> Callable[[int], float]:
+def get_custom_scheduler(cfg: dict | DictConfig, optimizer: Optimizer, base_lr: float, steps: int) -> Callable[[int], float]:
     """Get the custom scheduler.
     
     Raises:
@@ -127,6 +127,8 @@ def get_custom_scheduler(cfg: dict | DictConfig, optimizer: Optimizer) -> Callab
     Args:
         cfg (dict | DictConfig): Configuration file containing "name" key and other parameters.
         optimizer (Optimizer): The optimizer to adjust.
+        base_lr (float): The base learning rate.
+        steps (int): The total number of steps.
     Returns:
         Callable[[int], float]: A function to adjust learning rate at each step.
     """
@@ -142,10 +144,10 @@ def get_custom_scheduler(cfg: dict | DictConfig, optimizer: Optimizer) -> Callab
     name = name.lower()
     # Get the loss function based on the name
     if name == "const_lr":
-        return const_lr(optimizer, **cfg)
+        return const_lr(optimizer, base_lr=base_lr, steps=steps, **cfg)
     elif name == "const_lr_cooldown":
-        return const_lr_cooldown(optimizer, **cfg)
+        return const_lr_cooldown(optimizer, base_lr=base_lr, steps=steps, **cfg)
     elif name == "cosine_lr":
-        return cosine_lr(optimizer, **cfg)
+        return cosine_lr(optimizer, base_lr=base_lr, steps=steps, **cfg)
     else:
         raise CustomSchedulerNotImplementedError(f"Custom Scheduler {name} is not implemented.")

@@ -1,7 +1,8 @@
 import random
 import numpy as np
 import torch
-from typing import List, Any
+from pathlib import Path
+from typing import List, Any, Union
 from jsonargparse import ArgumentParser, Namespace
 import torch.distributed as dist
 from omegaconf import DictConfig
@@ -158,6 +159,22 @@ def parse_args() -> Namespace:
         Namespace: The parsed arguments.
     """
     parser = ArgumentParser("ClipAligner evaluation script")
-    # Define your arguments here, for example:
-    # parser.add_argument('--arg_name', type=int, default=42, help='Description of arg_name')
+    
+    #------------------------ Train ------------------------#
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--accelerator", type=str, default="auto", help="Accelerator")
+    parser.add_argument("--strategy", type=str, default="auto", help="Training strategy")
+    parser.add_argument("--compile", type=bool, default=False, help="Compile model with `torch.compiler`")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers")
+    
+    #------------------------ Data ------------------------#
+    parser.add_argument("--dataset", type=str, default="dumb_image_caption", help="Dataset")
+    parser.add_argument("--dataset_path", type=Path, default="/tmp", help="Data directory")
+    parser.add_argument("--train_size", type=Union[float, int], default=40, help="Evaluation size")
+    parser.add_argument("--text_max_length", type=int, default=20, help="Maximum text length")
+    
+    #------------------------ Model ------------------------#
+    parser.add_argument("--checkpoint", type=Path, required=True, help="Path to checkpoint")
+    
     return parser.parse_args()

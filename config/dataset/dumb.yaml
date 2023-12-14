@@ -1,14 +1,14 @@
 name: dumb_image_caption
 train:
   dataset_path: ./tmp
-  text_max_length: 40
+  text_max_length: 20
   train_size: 100
   img_size:
     - 256
     - 256
 val:
   dataset_path: ./tmp
-  text_max_length: 40
+  text_max_length: 20
   train_size: 40
   img_size:
     - 256

@@ -11,22 +11,20 @@ log_level: "INFO"
 vis_logger: True
 verbose: true
 seed: 1998
-compile: True
-batch_size: 8
-num_workers: 0
-batch_freq_print: 1
+compile: False
+batch_size: 64
+num_workers: 4
+batch_freq_print: 5
 optimizer:
   _target_: torch.optim.AdamW
-  lr: 0.001
-  weight_decay: 0.0
-  betas: [0.9, 0.999]
-  eps: 1e-08
+  lr: 5.0e-4
+  weight_decay: 0.2
+  betas: [0.9, 0.98]
+  eps: 1.0e-6
 scheduler:
   name: cosine_lr
-  base_lr: 0.001
   warmup_length: 0
-  steps: 100
-epochs: 2
+epochs: 5
 save_dir: "checkpoints"
 save_period: 1
 checkpoint: null
@@ -37,4 +35,3 @@ fabric:
   devices: "auto"
   strategy: "auto"
   precision: null
-  num_nodes: 1

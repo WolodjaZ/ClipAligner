@@ -42,12 +42,12 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
     name = cfg.pop("name", None) if name is None else name
     
     # Checj if the split is provided # sourcery skip: remove-redundant-if
-    if "train" and "val" in cfg:
+    if "train" in cfg and "val" in cfg:
         return get_dataset(cfg["train"], transfor, name)[0], get_dataset(cfg["val"], transfor, name)[0]
     elif "train" in cfg:
         cfg = cfg["train"]
     elif "val" in cfg:
-        raise DatasetNotImplementedError("Validation dataset is provided but not the train dataset.")
+        cfg = cfg["val"]
         
     
     # Extract the dataset path

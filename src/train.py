@@ -191,7 +191,7 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
         logger.info("No scheduler is used.")
     else:
         if "_target_" not in cfg.scheduler:
-            total_steps = len(train_dataloader) * cfg.epochs
+            total_steps = int((len(train_dataloader)/cfg.world_size)  * cfg.epochs)
             scheduler = get_custom_scheduler(cfg.scheduler, optimizer=optimizer, base_lr=cfg.optimizer.lr, steps=total_steps)
             logger.info(f"Scheduler: {scheduler} with hyperparameters: {cfg.scheduler} | Total Steps: {total_steps} | Base LR: {cfg.optimizer.lr}")
         else:

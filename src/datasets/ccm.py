@@ -9,11 +9,15 @@ from .base import BaseImageCaptionDataset, DatasetNotImplementedError
 class CC3MDataset(BaseImageCaptionDataset):
     def __init__(self, dataset_path: Path, train_size: float, image_transform: Callable | None = None, caption_transform: Callable | None = None, *args, **kwargs) -> None:
         super().__init__(dataset_path, image_transform, caption_transform, *args, **kwargs)
-        if train_size <= 0 or train_size > 1:
-            raise ValueError(f"Train size must be between 0 and 1, got {train_size}.")
+        if abs(train_size) <= 0 or abs(train_size) > 1:
+            raise ValueError(f"Absolute Train size must be between 0 and 1, got {train_size}.")
         self._train_size = train_size
         image_paths = self._get_image_paths()
-        self._image_paths = image_paths[:int(len(image_paths) * train_size)]
+        if self._train_size < 0:
+            train_size_diff = 1 + self._train_size
+            self._image_paths = image_paths[int(len(image_paths) * train_size_diff):]
+        else:
+            self._image_paths = image_paths[:int(len(image_paths) * self._train_size)]
         
         
     def __getitem__(self, index: int) -> (torch.Tensor, torch.Tensor | str):

@@ -41,7 +41,7 @@ def get_dataset(cfg: dict | DictConfig, transfor: Dict[str, Callable] | None = N
     # Extract the name
     name = cfg.pop("name", None) if name is None else name
     
-    # Checj if the split is provided # sourcery skip: remove-redundant-if
+    # Check if the split is provided # sourcery skip: remove-redundant-if
     if "train" in cfg and "val" in cfg:
         return get_dataset(cfg["train"], transfor, name)[0], get_dataset(cfg["val"], transfor, name)[0]
     elif "train" in cfg:

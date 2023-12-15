@@ -17,7 +17,7 @@ Interdum et malesuada fames ac ante ipsum primis in faucibus.
 
 class DumbImageDataset(BaseImageDataset):
     def __init__(self, dataset_path: Path, train_size: int, img_size: (int, int) = (64, 64), transform: Callable | None = None, *args, **kwargs) -> None:
-        self._train_size = train_size
+        self._train_size = abs(train_size)
         super().__init__(dataset_path, transform, *args, **kwargs)
         self._img_size = img_size
     

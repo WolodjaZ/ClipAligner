@@ -12,6 +12,7 @@ vis_logger: True
 verbose: true
 seed: 1998
 compile: False
+finetune: "heads"
 batch_size: 64
 num_workers: 4
 batch_freq_print: 5

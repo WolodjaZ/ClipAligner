@@ -6,6 +6,30 @@ from typing import Dict, Any
 from torch import nn
 
 
+def activation_resolver(activation_str: str) -> callable:
+    """Activation resolver. This function is used to resolve the activation function from the string.
+    
+    Args:
+        activation_str (str): Activation function name.
+    Returns:
+        callable: Activation function.
+    """
+    if activation_str == "relu":
+        return nn.ReLU()
+    elif activation_str == "gelu":
+        return nn.GELU()
+    elif activation_str == "leaky_relu":
+        return nn.LeakyReLU()
+    elif activation_str == "sigmoid":
+        return nn.Sigmoid()
+    elif activation_str == "tanh":
+        return nn.Tanh()
+    elif activation_str == "identity" or activation_str == "":
+        return nn.Identity()
+    else:
+        raise ValueError(f"Activation {activation_str} is not supported.")
+
+
 class ModelNotImplementedError(NotImplementedError):
     """Model not implemented error."""
 

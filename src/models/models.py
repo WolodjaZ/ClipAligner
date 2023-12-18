@@ -26,10 +26,6 @@ class DinoVisionModel(BaseImageModel):
         self._transform = [
             transforms.Resize(224, antialias=True), transforms.CenterCrop(224), transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
-        
-    
-    def to(self, device: torch.device) -> None:
-        self._model.to(device)
     
     @property
     def output_dim(self) -> int:
@@ -70,7 +66,7 @@ class RobertaCaptionModel(BaseCaptionModel):
         "xlm-roberta-base": 250002,
     }
     
-    def __init__(self, checkpoint: str, pooling: str, *args, **kwargs) -> None:
+    def __init__(self, checkpoint: str, pooling: str, add_pooling_layer: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if transformers is None:
             raise ImportError("Please install transformers library.")
@@ -79,13 +75,11 @@ class RobertaCaptionModel(BaseCaptionModel):
             self._tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
             self._model = transformers.AutoModelForMaskedLM.from_pretrained(checkpoint)
         else:
+            config = transformers.AutoConfig.from_pretrained(checkpoint)
             self._tokenizer = transformers.RobertaTokenizer.from_pretrained(checkpoint)
-            self._model = transformers.RobertaModel.from_pretrained(checkpoint)
+            self._model = transformers.RobertaModel(config, add_pooling_layer=add_pooling_layer)
         logger.info("Sssssh don't listen to the warning above, Robert can be grumpy.")
         self._pooler, self._output_dim = self._get_pooler_fn(pooling, checkpoint)
-    
-    def to(self, device: torch.device) -> None:
-        self._model.to(device)
 
     @property
     def output_dim(self) -> int:

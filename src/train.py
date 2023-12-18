@@ -162,6 +162,48 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
             pin_memory=True
         )
 
+    # Set the required parameters
+    for param in model.parameters():
+        param.requires_grad = False
+    try:
+        if cfg.finetune == "heads":
+            for param in model._vision_aligner.parameters():
+                param.requires_grad = True
+            for param in model._caption_aligner.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "vision":
+            for param in model._vision_model.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "vision_and_aligner":
+            for param in model._vision_model.parameters():
+                param.requires_grad = True
+            for param in model._vision_aligner.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "vision_aligner":
+            for param in model._vision_aligner.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "caption":
+            for param in model._caption_model.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "caption_and_aligner":
+            for param in model._caption_model.parameters():
+                param.requires_grad = True
+            for param in model._caption_aligner.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "caption_aligner":
+            for param in model._caption_aligner.parameters():
+                param.requires_grad = True
+        elif cfg.finetune == "all":
+            for param in model.parameters():
+                param.requires_grad = True
+        else:
+            raise ValueError(f"""Finetune {cfg.finetune} is not supported.
+            Only support: heads, vision, vision_and_aligner, vision_aligner, caption, caption_and_aligner, caption_aligner, all.""")
+    except AttributeError as e:
+        logger.warning(f"Finetune {cfg.finetune} is not supported for the model: {model} | Training all parameters | Error: {e}")
+        for param in model.parameters():
+            param.requires_grad = True
+
     # Set the optimizer
     optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
     

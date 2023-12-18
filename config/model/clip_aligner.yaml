@@ -9,8 +9,8 @@ caption:
 alignment:
   name: clip_aligner
   vision_layer:
-    - [768, "mlp"]
-    - [512, "mlp"]
+    - {"name": "mlp", "output": 768, "activation": "tanh"}
+    - {"name": "mlp", "output": 768, "activation": ""}
   caption_layer:
-    - [768, "mlp"]
-    - [512, "mlp"]
+    - {"name": "mlp", "output": 768, "activation": "tanh"}
+    - {"name": "mlp", "output": 768, "activation": ""}

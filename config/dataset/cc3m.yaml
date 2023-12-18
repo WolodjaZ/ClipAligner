@@ -6,4 +6,4 @@ train:
 val:
   dataset_path: ./ccm3_data/extracted
   text_max_length: 36
-  train_size: 0.2
+  train_size: -0.2

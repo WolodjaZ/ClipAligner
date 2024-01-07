@@ -55,3 +55,10 @@ TODO
 ## References
 
 TODO
+
+## Yet TODO
+
+- Add multi optimizers and locking of layers like proposed in [OpenCLIP](https://github.com/mlfoundations/open_clip/blob/695c72d1ef1c3044404bb5579ea25e2051658c2d/src/open_clip/transformer.py#L435).
+- Add CC12M Dataset with this [link](https://github.com/rom1504/img2dataset/blob/main/dataset_examples/cc12m.md)
+- Add YFCC100M Dataset with this [link](https://github.com/openai/CLIP/blob/main/data/yfcc100m.md)
+- Add accumulations of embeddings.

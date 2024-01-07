@@ -11,6 +11,8 @@ log_level: "INFO"
 vis_logger: True
 verbose: true
 seed: 1998
+matmul_precision: null
+clip_grad: true
 compile: False
 finetune: "heads"
 batch_size: 64

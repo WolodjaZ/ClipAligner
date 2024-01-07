@@ -104,6 +104,10 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
         fabric (L.fabric.Fabric): Lightning fabric.
         output_dir (Path): Path to the output directory.
     """
+    # Set the matmul precision ["medium", "high", "highest"] https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html
+    if cfg.matmul_precision is not None:
+        torch.set_float32_matmul_precision(cfg.matmul_precision)
+    
     # Set the seed
     fabric.seed_everything(cfg.seed)
     logger.info(f"Seed: {cfg.seed}")
@@ -210,6 +214,10 @@ def train(cfg: DictConfig, fabric: L.fabric.Fabric, output_dir: Path ) -> None:
     # Set the model and optimizer
     model = fabric.setup(model)
     optimizer = fabric.setup_optimizers(optimizer)
+    
+    # Set clip grad
+    if cfg.clip_grad:
+        fabric.clip_gradients(model, optimizer, max_norm=1.0)
     
     # compile torch model, thread about it: https://github.com/Lightning-AI/pytorch-lightning/issues/17250
     if cfg.compile:
